@@ -1,0 +1,67 @@
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+:root {
+  --toolbar-height: 48px;
+  --statusbar-height: 32px;
+  --panel-width: 320px;
+  --bg-dark: #1a1a2e;
+  --bg-panel: #16213e;
+  --bg-card: #0f3460;
+  --text-primary: #e6e6e6;
+  --text-secondary: #a0a0b0;
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  --border: #2a2a4a;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+/* Cesium widget overrides */
+.cesium-viewer-bottom,
+.cesium-viewer .cesium-widget-credits {
+  display: none !important;
+}
+
+.cesium-viewer .cesium-viewer-toolbar {
+  display: none !important;
+}
+
+.cesium-viewer .cesium-viewer-animationContainer,
+.cesium-viewer .cesium-viewer-timelineContainer,
+.cesium-viewer .cesium-viewer-fullscreenContainer {
+  display: none !important;
+}
+
+/* Element Plus dark overrides */
+.el-input__inner {
+  color: var(--text-primary) !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
