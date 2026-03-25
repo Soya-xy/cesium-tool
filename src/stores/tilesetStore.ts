@@ -23,6 +23,9 @@ export const useTilesetStore = defineStore('tileset', () => {
   const featureProperties = shallowRef<FeatureProperty[]>([])
   const pickedPosition = shallowRef<Cesium.Cartesian3 | null>(null)
   const propsLoading = ref(false)
+  // 构件所属楼层和离地高度
+  const featureFloorLabel = ref<string | null>(null)
+  const featureGroundHeight = ref<number | null>(null)
 
   function addTileset(item: TilesetItem) {
     // markRaw 阻止 Vue 代理 Cesium3DTileset 实例（包含大量 WebGL 资源）
@@ -81,6 +84,8 @@ export const useTilesetStore = defineStore('tileset', () => {
     selectedFeature.value = null
     pickedPosition.value = null
     propsLoading.value = false
+    featureFloorLabel.value = null
+    featureGroundHeight.value = null
     // 不清除 featureProperties —— 弹窗已通过 v-show 隐藏，
     // 清除会触发 Vue VDOM 对 100+ 行的昂贵 diff
   }
@@ -92,6 +97,8 @@ export const useTilesetStore = defineStore('tileset', () => {
     featureProperties,
     pickedPosition,
     propsLoading,
+    featureFloorLabel,
+    featureGroundHeight,
     addTileset,
     removeTileset,
     setSelectedFeature,

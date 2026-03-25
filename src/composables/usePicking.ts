@@ -2,10 +2,14 @@ import { ref, onUnmounted } from 'vue'
 import * as Cesium from 'cesium'
 import { useCesiumStore } from '@/stores/cesiumStore'
 import { useTilesetStore } from '@/stores/tilesetStore'
+import { useBimFloor } from '@/composables/useBimFloor'
+import { useFeatureVisualizer } from '@/composables/useFeatureVisualizer'
 
 export function usePicking() {
   const cesiumStore = useCesiumStore()
   const tilesetStore = useTilesetStore()
+  const bimFloor = useBimFloor()
+  const visualizer = useFeatureVisualizer()
 
   const popupVisible = ref(false)
   const popupX = ref(0)
@@ -20,6 +24,15 @@ export function usePicking() {
   let selected: { feature: Cesium.Cesium3DTileFeature | null; originalColor: Cesium.Color } = {
     feature: null,
     originalColor: new Cesium.Color(),
+  }
+
+  // 追踪待执行的延迟操作，避免竞态
+  let pendingRestoreTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingColorTimer: ReturnType<typeof setTimeout> | null = null
+
+  function clearPendingTimers() {
+    if (pendingRestoreTimer !== null) { clearTimeout(pendingRestoreTimer); pendingRestoreTimer = null }
+    if (pendingColorTimer !== null) { clearTimeout(pendingColorTimer); pendingColorTimer = null }
   }
 
   function clearHighlight() {
@@ -68,42 +81,50 @@ export function usePicking() {
 
     // 左键点击选择
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      // === 同步阶段：仅执行快速操作（无 GPU 操作） ===
+      // 取消前一次点击的待执行操作，避免快速连续点击时的竞态
+      clearPendingTimers()
 
-      // 1. 立即隐藏弹窗
+      // === 同步阶段 ===
+
+      // 1. 隐藏弹窗
       popupVisible.value = false
 
-      // 2. 保存前一个要素引用（暂不恢复颜色 —— 那是昂贵的操作）
+      // 2. 保存前一个要素引用
       const prevFeature = selected.feature
       const prevOrigColor = Cesium.Color.clone(selected.originalColor, new Cesium.Color())
       selected.feature = null
 
-      // 3. scene.pick() —— 同步 GPU 拾取操作，无法避免
+      // 3. scene.pick()
       const picked = viewer.scene.pick(movement.position)
       if (!Cesium.defined(picked) || !(picked instanceof Cesium.Cesium3DTileFeature)) {
-        // 点击了空白区域
+        // 点击空白 —— 立即恢复前一个构件颜色
         if (prevFeature) {
-          setTimeout(() => { try { prevFeature.color = prevOrigColor } catch {} }, 0)
+          try { prevFeature.color = prevOrigColor } catch {}
         }
         tilesetStore.clearSelection()
+        visualizer.clear()
         return
       }
 
-      // 4. 保存新拾取对象的原始颜色（快速 —— 只是读取缓存值）
+      // 4. 保存原始颜色
       selected.feature = picked
-      if (picked === highlighted.feature) {
+      if (picked === prevFeature) {
+        // 重新点击同一构件 —— 保持已保存的原始颜色（避免保存 CYAN）
+        Cesium.Color.clone(prevOrigColor, selected.originalColor)
+      } else if (picked === highlighted.feature) {
+        // 点击了悬停高亮的构件 —— 使用高亮前的原始颜色
         Cesium.Color.clone(highlighted.originalColor, selected.originalColor)
         highlighted.feature = null
       } else {
         Cesium.Color.clone(picked.color, selected.originalColor)
       }
 
-      // 保存点击位置供延迟使用
+      // 保存点击位置
       const clickPos = Cesium.Cartesian2.clone(movement.position)
 
-      // === 异步阶段：将昂贵的操作分散到多帧中 ===
+      // === 异步阶段 ===
 
-      // 第1帧（下一个 tick）：显示弹窗及位置 + 开始加载指示器
+      // 第1帧：弹窗 + 选中状态 + 可视化
       setTimeout(() => {
         const cartesian = viewer.scene.pickPosition(clickPos)
         if (cartesian) {
@@ -115,35 +136,48 @@ export function usePicking() {
         }
         popupVisible.value = true
         tilesetStore.setSelectedFeature(picked, cartesian ?? null)
+
+        // 楼层检测
+        const floor = bimFloor.getFloorByTileset(picked.tileset)
+        tilesetStore.featureFloorLabel = floor ? floor.label : null
+
+        // 显示包围球 + 离地测量线（基于 tile 包围球，非点击位置）
+        const groundH = visualizer.show(picked)
+        tilesetStore.featureGroundHeight = groundH
       }, 0)
 
-      // 第2帧：恢复前一个要素的颜色（昂贵 —— 创建/更新批量纹理）
-      setTimeout(() => {
-        if (prevFeature && prevFeature !== picked) {
+      // 第2帧：恢复前一个构件颜色
+      if (prevFeature && prevFeature !== picked) {
+        pendingRestoreTimer = setTimeout(() => {
+          pendingRestoreTimer = null
           try { prevFeature.color = prevOrigColor } catch {}
-        }
-      }, 50)
+        }, 50)
+      }
 
-      // 第3帧：设置新的选中颜色（昂贵 —— 同样的原因）
-      setTimeout(() => {
+      // 第3帧：设置选中颜色
+      pendingColorTimer = setTimeout(() => {
+        pendingColorTimer = null
         if (selected.feature === picked) {
           try { picked.color = Cesium.Color.CYAN.withAlpha(0.7) } catch {}
         }
       }, 100)
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 
-    // 仅在相机移动时更新弹窗位置
+    // 相机移动时更新弹窗位置
     viewer.camera.changed.addEventListener(() => {
       updatePopupScreenPosition(viewer)
     })
   }
 
   function clearPicking() {
-    // 1. 立即隐藏弹窗（即时 UI 反馈）
+    clearPendingTimers()
+
+    // 1. 隐藏弹窗
     popupVisible.value = false
     tilesetStore.clearSelection()
+    visualizer.clear()
 
-    // 2. 延迟执行昂贵的颜色恢复操作，避免阻塞关闭动画
+    // 2. 恢复颜色
     const feat = selected.feature
     const origColor = Cesium.Color.clone(selected.originalColor, new Cesium.Color())
     selected.feature = null
@@ -161,6 +195,7 @@ export function usePicking() {
   }
 
   onUnmounted(() => {
+    clearPendingTimers()
     handler?.destroy()
   })
 
