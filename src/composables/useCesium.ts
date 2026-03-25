@@ -30,7 +30,7 @@ export function useCesium() {
       msaaSamples: 4,
     })
 
-    // Tianditu satellite imagery
+    // 天地图卫星影像
     viewer.imageryLayers.addImageryProvider(
       new Cesium.WebMapTileServiceImageryProvider({
         url: TIANDITU_IMG_URL,
@@ -43,7 +43,7 @@ export function useCesium() {
       })
     )
 
-    // Tianditu annotation layer
+    // 天地图注记图层
     viewer.imageryLayers.addImageryProvider(
       new Cesium.WebMapTileServiceImageryProvider({
         url: TIANDITU_CIA_URL,
@@ -56,20 +56,21 @@ export function useCesium() {
       })
     )
 
-    // Enable depth test against terrain
+    // 启用地形深度检测
     viewer.scene.globe.depthTestAgainstTerrain = true
 
-    // Default camera - China overview
+    // 默认相机位置 - 中国全景
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(116.39, 39.9, 15000000),
       duration: 0,
     })
 
-    // Track mouse position
+    // 追踪鼠标位置（使用 globe.pick —— 比 pickPosition 开销更小）
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-      const cartesian = viewer.scene.pickPosition(movement.endPosition)
-        ?? viewer.scene.globe.pick(viewer.camera.getPickRay(movement.endPosition)!, viewer.scene)
+      const ray = viewer.camera.getPickRay(movement.endPosition)
+      if (!ray) return
+      const cartesian = viewer.scene.globe.pick(ray, viewer.scene)
       if (cartesian) {
         const carto = Cesium.Cartographic.fromCartesian(cartesian)
         mouseLon.value = Cesium.Math.toDegrees(carto.longitude)
@@ -78,7 +79,7 @@ export function useCesium() {
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
-    // Track camera position
+    // 追踪相机位置
     viewer.camera.changed.addEventListener(() => {
       const carto = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC)
       cameraLon.value = Cesium.Math.toDegrees(carto.longitude)
@@ -86,7 +87,7 @@ export function useCesium() {
       cameraHeight.value = carto.height
     })
 
-    // FPS counter
+    // 帧率计数器
     let frameCount = 0
     viewer.scene.postRender.addEventListener(() => {
       frameCount++
@@ -97,6 +98,7 @@ export function useCesium() {
     }, 1000)
 
     store.setViewer(viewer)
+    ;(window as any).__viewer = viewer
     return viewer
   }
 

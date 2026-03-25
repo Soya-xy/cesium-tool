@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, inject, type Ref } from 'vue'
 import { useTilesetStore } from '@/stores/tilesetStore'
 import { useTileset } from '@/composables/useTileset'
 
 const store = useTilesetStore()
 const { updateTilesetProperty } = useTileset()
 
+const hoverHighlight = inject<Ref<boolean>>('hoverHighlight', ref(false))
+
 const activeTileset = computed(() =>
   store.tilesets.find(t => t.id === store.activeTilesetId)
 )
 
-// Editable properties
+// 可编辑属性
 const maxSSE = ref(16)
 const maxMemory = ref(512)
 const showBoundingVolume = ref(false)
@@ -47,6 +49,18 @@ function update(prop: string, value: any) {
     </div>
 
     <template v-else>
+      <div class="section">
+        <div class="section-title">交互设置</div>
+        <div class="prop-row inline">
+          <label>鼠标悬停高亮</label>
+          <input
+            type="checkbox"
+            :checked="hoverHighlight"
+            @change="hoverHighlight = ($event.target as HTMLInputElement).checked"
+          />
+        </div>
+      </div>
+
       <div class="section">
         <div class="section-title">渲染属性</div>
 

@@ -4,6 +4,7 @@ import CesiumViewer from './components/cesium/CesiumViewer.vue'
 import TopToolbar from './components/toolbar/TopToolbar.vue'
 import StatusBar from './components/statusbar/StatusBar.vue'
 import ModelList from './components/panels/ModelList.vue'
+import BimFloorPanel from './components/panels/BimFloorPanel.vue'
 import PropertyEditor from './components/panels/PropertyEditor.vue'
 import DebugPanel from './components/panels/DebugPanel.vue'
 import ModelInfoPanel from './components/panels/ModelInfoPanel.vue'
@@ -11,6 +12,7 @@ import ModelInfoPanel from './components/panels/ModelInfoPanel.vue'
 const leftPanelVisible = ref(true)
 const rightPanelVisible = ref(true)
 const rightTab = ref('property')
+const leftTab = ref<'models' | 'floors'>('models')
 
 provide('leftPanelVisible', leftPanelVisible)
 provide('rightPanelVisible', rightPanelVisible)
@@ -20,29 +22,46 @@ provide('rightPanelVisible', rightPanelVisible)
   <div class="app dark">
     <TopToolbar class="toolbar" />
     <div class="main">
-      <!-- Left Panel -->
+      <!-- 左侧面板 -->
       <transition name="slide-left">
         <div v-show="leftPanelVisible" class="panel left-panel">
-          <ModelList />
+          <div class="panel-tabs">
+            <button
+              :class="['tab-btn', { active: leftTab === 'models' }]"
+              @click="leftTab = 'models'"
+            >
+              模型
+            </button>
+            <button
+              :class="['tab-btn', { active: leftTab === 'floors' }]"
+              @click="leftTab = 'floors'"
+            >
+              分层
+            </button>
+          </div>
+          <div class="panel-content">
+            <ModelList v-show="leftTab === 'models'" />
+            <BimFloorPanel v-show="leftTab === 'floors'" />
+          </div>
         </div>
       </transition>
 
-      <!-- Toggle left panel -->
+      <!-- 切换左侧面板 -->
       <button class="panel-toggle left-toggle" @click="leftPanelVisible = !leftPanelVisible">
         {{ leftPanelVisible ? '◀' : '▶' }}
       </button>
 
-      <!-- Cesium Scene -->
+      <!-- Cesium 场景 -->
       <div class="scene-container">
         <CesiumViewer />
       </div>
 
-      <!-- Toggle right panel -->
+      <!-- 切换右侧面板 -->
       <button class="panel-toggle right-toggle" @click="rightPanelVisible = !rightPanelVisible">
         {{ rightPanelVisible ? '▶' : '◀' }}
       </button>
 
-      <!-- Right Panel -->
+      <!-- 右侧面板 -->
       <transition name="slide-right">
         <div v-show="rightPanelVisible" class="panel right-panel">
           <div class="panel-tabs">
@@ -100,6 +119,18 @@ provide('rightPanelVisible', rightPanelVisible)
   border-right: 1px solid var(--border);
   overflow-y: auto;
   z-index: 10;
+}
+
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.left-panel .panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
 }
 
 .right-panel {
@@ -190,7 +221,7 @@ provide('rightPanelVisible', rightPanelVisible)
   flex-shrink: 0;
 }
 
-/* Transitions */
+/* 过渡动画 */
 .slide-left-enter-active,
 .slide-left-leave-active,
 .slide-right-enter-active,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, provide } from 'vue'
 import { useCesium } from '@/composables/useCesium'
 import { usePicking } from '@/composables/usePicking'
 import { useContextMenu } from '@/composables/useContextMenu'
@@ -12,6 +12,9 @@ const picking = usePicking()
 const contextMenu = useContextMenu()
 const localTileset = useLocalTileset()
 const containerRef = ref<HTMLDivElement>()
+
+// 将悬停高亮开关共享给 PropertyEditor
+provide('hoverHighlight', picking.hoverHighlight)
 
 onMounted(() => {
   if (!containerRef.value) return
@@ -30,7 +33,7 @@ onMounted(() => {
     @dragleave="localTileset.onDragLeave"
     @drop="localTileset.onDrop"
   >
-    <!-- Drop Zone Overlay -->
+    <!-- 拖放区域遮罩层 -->
     <Transition name="fade">
       <div v-if="localTileset.isDragging.value" class="drop-overlay">
         <div class="drop-zone">
@@ -41,7 +44,7 @@ onMounted(() => {
       </div>
     </Transition>
 
-    <!-- Loading Overlay -->
+    <!-- 加载中遮罩层 -->
     <Transition name="fade">
       <div v-if="localTileset.isProcessing.value" class="loading-overlay">
         <div class="loading-spinner" />
@@ -49,7 +52,7 @@ onMounted(() => {
       </div>
     </Transition>
 
-    <!-- Popup Overlay -->
+    <!-- 属性弹窗 -->
     <PopupOverlay
       :visible="picking.popupVisible.value"
       :x="picking.popupX.value"
@@ -57,7 +60,7 @@ onMounted(() => {
       @close="picking.clearPicking()"
     />
 
-    <!-- Context Menu (Element Plus) -->
+    <!-- 右键菜单（Element Plus） -->
     <ContextMenu
       :visible="contextMenu.menuVisible.value"
       :x="contextMenu.menuX.value"
@@ -75,7 +78,7 @@ onMounted(() => {
   position: relative;
 }
 
-/* Drop Zone */
+/* 拖放区域 */
 .drop-overlay {
   position: absolute;
   inset: 0;
@@ -120,7 +123,7 @@ onMounted(() => {
   50% { transform: translateY(-8px); }
 }
 
-/* Loading */
+/* 加载中 */
 .loading-overlay {
   position: absolute;
   inset: 0;
@@ -152,7 +155,7 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
-/* Transitions */
+/* 过渡动画 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s;

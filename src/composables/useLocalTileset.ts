@@ -25,14 +25,14 @@ function extractLocalPath(url: string): string {
 }
 
 /**
- * Intercept at the Cesium Resource level (XHR) — this is where Cesium actually loads tiles.
- * Also intercept window.fetch as fallback.
+ * 在 Cesium Resource 层级（XHR）拦截请求 —— 这是 Cesium 实际加载瓦片的地方。
+ * 同时拦截 window.fetch 作为后备方案。
  */
 function installIntercept() {
   if (interceptInstalled) return
   interceptInstalled = true
 
-  // 1. Override Cesium's internal XHR loader (primary method Cesium uses)
+  // 1. 重写 Cesium 内部的 XHR 加载器（Cesium 使用的主要方法）
   const impl = (Cesium.Resource as any)._Implementations
   if (impl?.loadWithXhr) {
     const originalLoadWithXhr = impl.loadWithXhr
@@ -49,7 +49,7 @@ function installIntercept() {
       if (localPath && fileStore.has(localPath)) {
         const file = fileStore.get(localPath)!
         file.arrayBuffer().then((buffer) => {
-          // If expecting JSON, parse it
+          // 如果期望 JSON 格式，则解析它
           if (responseType === '' || responseType === 'text' || url.endsWith('.json')) {
             const text = new TextDecoder().decode(buffer)
             try {
@@ -67,7 +67,7 @@ function installIntercept() {
     }
   }
 
-  // 2. Also override window.fetch as fallback (some Cesium versions use fetch)
+  // 2. 同时重写 window.fetch 作为后备方案（某些 Cesium 版本使用 fetch）
   const originalFetch = window.fetch
   window.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = typeof input === 'string'
@@ -98,7 +98,7 @@ function installIntercept() {
   }
 }
 
-/** Recursively read a FileSystemDirectoryEntry into the file store */
+/** 递归读取 FileSystemDirectoryEntry 到文件存储中 */
 async function readDirectoryEntry(
   entry: FileSystemDirectoryEntry,
   basePath: string,
@@ -127,9 +127,9 @@ async function readDirectoryEntry(
   }
 }
 
-/** Find tileset.json in the file store */
+/** 在文件存储中查找 tileset.json */
 function findTilesetJson(): string | null {
-  // Prefer shortest path tileset.json (closest to root)
+  // 优先选择路径最短的 tileset.json（最接近根目录）
   const candidates: string[] = []
   for (const key of fileStore.keys()) {
     if (key.endsWith('tileset.json')) {
@@ -188,8 +188,8 @@ export function useLocalTileset() {
         if (!entry) continue
 
         if (entry.isDirectory) {
-          // Store files WITHOUT the top-level folder name as prefix
-          // so relative paths inside tileset.json resolve correctly
+          // 存储文件时不包含顶层文件夹名称作为前缀，
+          // 这样 tileset.json 中的相对路径能正确解析
           await readDirectoryEntry(entry as FileSystemDirectoryEntry, '')
         } else if (entry.isFile) {
           const file = await new Promise<File>((resolve, reject) => {

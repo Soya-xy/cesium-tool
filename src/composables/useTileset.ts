@@ -12,6 +12,14 @@ export function useTileset() {
     const viewer = cesiumStore.viewer
     if (!viewer) return null
 
+    // 防止重复加载相同的 URL
+    const existing = tilesetStore.tilesets.find(t => t.url === url)
+    if (existing) {
+      viewer.zoomTo(existing.tileset, new Cesium.HeadingPitchRange(0, -0.5, 0))
+      tilesetStore.activeTilesetId = existing.id
+      return existing
+    }
+
     try {
       const tileset = await Cesium.Cesium3DTileset.fromUrl(url, {
         maximumScreenSpaceError: 16,
@@ -30,7 +38,7 @@ export function useTileset() {
 
       tilesetStore.addTileset(item)
 
-      // Fly to tileset
+      // 飞行到 tileset
       viewer.zoomTo(tileset, new Cesium.HeadingPitchRange(0, -0.5, 0))
 
       return item
@@ -67,7 +75,7 @@ export function useTileset() {
     }
   }
 
-  // Tileset property editing
+  // Tileset 属性编辑
   function updateTilesetProperty(id: string, prop: string, value: any) {
     const item = tilesetStore.tilesets.find(t => t.id === id)
     if (!item) return

@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import type { Plugin, Connect } from 'vite'
 
-/** Inline Cesium plugin — serves Cesium static assets (Workers/Assets/Widgets) in dev */
+/** 内联 Cesium 插件 —— 在开发模式下提供 Cesium 静态资源（Workers/Assets/Widgets） */
 function cesiumPlugin(): Plugin {
   let cesiumBuildPath = ''
 

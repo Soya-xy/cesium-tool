@@ -28,7 +28,7 @@ export function useContextMenu() {
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      // Convert canvas coords to viewport coords
+      // 将画布坐标转换为视口坐标
       const canvas = viewer.scene.canvas
       const rect = canvas.getBoundingClientRect()
       menuX.value = movement.position.x + rect.left
@@ -49,7 +49,7 @@ export function useContextMenu() {
       menuVisible.value = true
     }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
 
-    // Close menu on left click
+    // 左键点击关闭菜单
     handler.setInputAction(() => {
       menuVisible.value = false
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
@@ -93,7 +93,7 @@ export function useContextMenu() {
       },
       {
         index: 'measure',
-        icon: 'Ruler',
+        icon: 'Lollipop',
         label: '图上量算',
         children: [
           { index: 'measure-space', icon: 'Rank', label: '空间距离', action: () => { ElMessage.info('空间距离量算 (待实现)'); menuVisible.value = false } },

@@ -29,7 +29,7 @@ html, body, #app {
   --success: #22c55e;
 }
 
-/* Cesium widget overrides */
+/* Cesium 组件覆盖样式 */
 .cesium-viewer-bottom,
 .cesium-viewer .cesium-widget-credits {
   display: none !important;
@@ -45,12 +45,12 @@ html, body, #app {
   display: none !important;
 }
 
-/* Element Plus dark overrides */
+/* Element Plus 暗色模式覆盖 */
 .el-input__inner {
   color: var(--text-primary) !important;
 }
 
-/* Scrollbar */
+/* 滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

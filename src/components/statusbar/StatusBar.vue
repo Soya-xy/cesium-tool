@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useCesiumStore } from '@/stores/cesiumStore'
 import * as Cesium from 'cesium'
 
@@ -10,27 +10,25 @@ const mouseLat = ref(0)
 const mouseHeight = ref(0)
 const cameraHeight = ref(0)
 const fps = ref(0)
-const tileCount = ref(0)
 
-let removePostRender: (() => void) | null = null
-let removeMouseMove: Cesium.ScreenSpaceEventHandler | null = null
+let handler: Cesium.ScreenSpaceEventHandler | null = null
 let fpsInterval: ReturnType<typeof setInterval> | null = null
 let frameCount = 0
+let viewerReady = false
 
 onMounted(() => {
-  // Poll until viewer is available
   const check = setInterval(() => {
     const viewer = cesiumStore.viewer
     if (!viewer) return
     clearInterval(check)
+    viewerReady = true
 
-    // Mouse tracking
-    removeMouseMove = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-    removeMouseMove.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+    // 单独的鼠标追踪处理器（仅使用开销较低的 globe.pick）
+    handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
       const ray = viewer.camera.getPickRay(movement.endPosition)
       if (!ray) return
       const cartesian = viewer.scene.globe.pick(ray, viewer.scene)
-        ?? viewer.scene.pickPosition(movement.endPosition)
       if (cartesian) {
         const carto = Cesium.Cartographic.fromCartesian(cartesian)
         mouseLon.value = Cesium.Math.toDegrees(carto.longitude)
@@ -39,16 +37,15 @@ onMounted(() => {
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
-    // Camera height
+    // 相机高度 —— 仅在变化时更新
     viewer.camera.changed.addEventListener(() => {
       const carto = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC)
       cameraHeight.value = carto.height
     })
-    // Init camera height
     const carto = Cesium.Cartographic.fromCartesian(viewer.camera.positionWC)
     cameraHeight.value = carto.height
 
-    // FPS
+    // 帧率 —— 统计帧数，每秒读取一次
     viewer.scene.postRender.addEventListener(() => { frameCount++ })
     fpsInterval = setInterval(() => {
       fps.value = frameCount
@@ -58,7 +55,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  removeMouseMove?.destroy()
+  handler?.destroy()
   if (fpsInterval) clearInterval(fpsInterval)
 })
 

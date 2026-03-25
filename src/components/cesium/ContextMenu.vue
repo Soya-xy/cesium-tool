@@ -2,7 +2,7 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { ElMenu, ElMenuItem, ElSubMenu, ElIcon } from 'element-plus'
 import {
-  Location, Camera, Ruler, MapLocation, View, MagicStick,
+  Location, Camera, Lollipop, MapLocation, View, MagicStick,
   Histogram, Setting, Rank, Minus, Grid, Sort,
   LocationFilled, Share, CopyDocument, EditPen,
   Download, Right, RefreshRight, Sunny, PictureFilled,
@@ -25,16 +25,16 @@ const menuRef = ref<HTMLDivElement>()
 const adjustedX = ref(0)
 const adjustedY = ref(0)
 
-// Icon mapping
+// 图标映射
 const iconMap: Record<string, any> = {
-  Location, Camera, Ruler, MapLocation, View, MagicStick,
+  Location, Camera, Lollipop, MapLocation, View, MagicStick,
   Histogram, Setting, Rank, Minus, Grid, Sort,
   LocationFilled, Share, CopyDocument, EditPen,
   Download, Right, RefreshRight, Sunny, PictureFilled,
   Cloudy, Moon, Star,
 }
 
-// Adjust position to keep menu within viewport
+// 调整位置使菜单保持在视口内
 watch(() => props.visible, async (val) => {
   if (!val) return
   adjustedX.value = props.x
@@ -57,7 +57,7 @@ watch(() => props.visible, async (val) => {
 })
 
 function handleSelect(index: string) {
-  // Find and execute the action
+  // 查找并执行对应的操作
   for (const item of props.items) {
     if (item.index === index && item.action) {
       item.action()
@@ -77,7 +77,7 @@ function handleSelect(index: string) {
 
 <template>
   <Teleport to="body">
-    <!-- Backdrop to catch outside clicks -->
+    <!-- 背景层用于捕获外部点击 -->
     <div v-if="visible" class="context-backdrop" @click="emit('close')" @contextmenu.prevent="emit('close')" />
 
     <div
@@ -94,7 +94,7 @@ function handleSelect(index: string) {
         @select="handleSelect"
       >
         <template v-for="item in items" :key="item.index">
-          <!-- Has children → sub-menu -->
+          <!-- 有子项 → 子菜单 -->
           <ElSubMenu v-if="item.children" :index="item.index" popper-class="context-submenu-popper">
             <template #title>
               <ElIcon v-if="iconMap[item.icon]" :size="16"><component :is="iconMap[item.icon]" /></ElIcon>
@@ -106,7 +106,7 @@ function handleSelect(index: string) {
             </ElMenuItem>
           </ElSubMenu>
 
-          <!-- No children → menu item -->
+          <!-- 无子项 → 菜单项 -->
           <ElMenuItem v-else :index="item.index">
             <ElIcon v-if="iconMap[item.icon]" :size="16"><component :is="iconMap[item.icon]" /></ElIcon>
             <span>{{ item.label }}</span>
@@ -174,14 +174,14 @@ function handleSelect(index: string) {
   color: inherit;
 }
 
-/* Remove the left border indicator */
+/* 移除左侧边框指示器 */
 .context-el-menu :deep(.el-menu-item::before),
 .context-el-menu :deep(.el-sub-menu__title::before) {
   display: none;
 }
 </style>
 
-<!-- Global styles for submenu popper (not scoped because it teleports to body) -->
+<!-- 子菜单弹出层的全局样式（不使用 scoped，因为它通过 teleport 挂载到 body） -->
 <style>
 .context-submenu-popper {
   --el-menu-bg-color: rgba(22, 33, 62, 0.96) !important;
