@@ -44,22 +44,6 @@ export function usePicking() {
     }
   }
 
-  function updatePopupScreenPosition(viewer: Cesium.Viewer) {
-    if (!popupVisible.value || !tilesetStore.pickedPosition) return
-    const canvasPos = Cesium.SceneTransforms.worldToWindowCoordinates(
-      viewer.scene,
-      tilesetStore.pickedPosition,
-    )
-    if (canvasPos) {
-      const nx = Math.round(canvasPos.x)
-      const ny = Math.round(canvasPos.y)
-      if (nx !== popupX.value || ny !== popupY.value) {
-        popupX.value = nx
-        popupY.value = ny
-      }
-    }
-  }
-
   function setupPicking() {
     const viewer = cesiumStore.viewer
     if (!viewer) return
@@ -174,11 +158,6 @@ export function usePicking() {
         }
       }, 100)
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-
-    // 相机移动时更新弹窗位置
-    viewer.camera.changed.addEventListener(() => {
-      updatePopupScreenPosition(viewer)
-    })
 
     watch(
       () => interactionStore.isDrawing,

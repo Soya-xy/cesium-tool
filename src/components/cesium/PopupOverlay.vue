@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { ElDialog, ElMessage, ElScrollbar } from 'element-plus'
 import { useTilesetStore } from '@/stores/tilesetStore'
 import { cartesianToCoordinate } from '@/utils/coordinate'
-import { computed } from 'vue'
-import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
   visible: boolean
@@ -15,6 +15,14 @@ const emit = defineEmits<{
 }>()
 
 const store = useTilesetStore()
+const dialogStyle = ref<Record<string, string>>({
+  margin: '0',
+  left: '24px',
+  top: '24px',
+  position: 'fixed',
+})
+
+const dialogVisible = computed(() => props.visible && !!store.selectedFeature)
 
 const positionInfo = computed(() => {
   if (!store.pickedPosition) return null
@@ -25,28 +33,61 @@ function copyValue(val: string) {
   navigator.clipboard.writeText(val)
   ElMessage.success('已复制')
 }
+
+function updateDialogPosition() {
+  const dialogWidth = 380
+  const margin = 24
+  const maxLeft = Math.max(margin, window.innerWidth - dialogWidth - margin)
+  const left = Math.min(Math.max(props.x + 18, margin), maxLeft)
+  const top = Math.max(props.y - 16, margin)
+
+  dialogStyle.value = {
+    margin: '0',
+    left: `${left}px`,
+    top: `${top}px`,
+    position: 'fixed',
+  }
+}
+
+watch(
+  () => dialogVisible.value,
+  (visible, previousVisible) => {
+    if (visible && !previousVisible) {
+      updateDialogPosition()
+    }
+  }
+)
 </script>
 
 <template>
-  <!-- 使用 v-show 保持 DOM 存活，避免挂载/卸载开销 -->
-  <div
-    v-show="visible && store.selectedFeature"
-    class="popup-overlay"
-    :style="{
-      left: x + 15 + 'px',
-      top: y - 10 + 'px',
-    }"
+  <ElDialog
+    :model-value="dialogVisible"
+    class="feature-dialog"
+    width="280px"
+    :modal="false"
+    :show-close="true"
+    :close-on-click-modal="false"
+    :lock-scroll="false"
+    :append-to-body="true"
+    :destroy-on-close="false"
+    draggable
+    overflow
+    :style="dialogStyle"
+    @close="emit('close')"
   >
-    <div class="popup-header">
-      <span class="popup-title">构件属性</span>
-      <span v-if="store.propsLoading" class="popup-loading">加载中...</span>
-      <span v-else class="popup-count">{{ store.featureProperties.length }} 项</span>
-      <button class="popup-close" @click="emit('close')">✕</button>
-    </div>
+    <template #header>
+      <div class="dialog-header">
+        <span class="dialog-title">构件属性</span>
+        <span v-if="store.propsLoading" class="dialog-meta loading">加载中...</span>
+        <span v-else class="dialog-meta">{{ store.featureProperties.length }} 项</span>
+      </div>
+    </template>
 
-    <!-- 位置信息 -->
-    <div v-if="positionInfo" class="popup-section">
-      <div class="prop-row" @click="copyValue(`${positionInfo.longitude.toFixed(6)}, ${positionInfo.latitude.toFixed(6)}, ${positionInfo.height.toFixed(2)}`)">
+    <div v-if="positionInfo" class="section">
+      <div
+        class="prop-row clickable"
+        @click="copyValue(`${positionInfo.longitude.toFixed(6)}, ${positionInfo.latitude.toFixed(6)}, ${positionInfo.height.toFixed(2)}`)"
+      >
         <span class="prop-key">坐标</span>
         <span class="prop-val">{{ positionInfo.longitude.toFixed(6) }}°, {{ positionInfo.latitude.toFixed(6) }}°</span>
       </div>
@@ -64,154 +105,111 @@ function copyValue(val: string) {
       </div>
     </div>
 
-    <div class="popup-divider" />
+    <div class="divider" />
 
-    <!-- 要素属性 -->
-    <div v-if="store.propsLoading" class="popup-section loading-section">
-      <div class="spinner" />
+    <div v-if="store.propsLoading" class="loading-state">
+      <span>正在读取属性...</span>
     </div>
-    <div v-else class="popup-section props-list">
-      <div
-        v-for="prop in store.featureProperties"
-        :key="prop.key"
-        class="prop-row"
-        @click="copyValue(prop.value)"
-        title="点击复制"
-      >
-        <span class="prop-key">{{ prop.key }}</span>
-        <span class="prop-val">{{ prop.value }}</span>
+    <ElScrollbar v-else max-height="320px" class="props-scroll">
+      <div class="props-list">
+        <div
+          v-for="prop in store.featureProperties"
+          :key="prop.key"
+          class="prop-row clickable"
+          title="点击复制"
+          @click="copyValue(prop.value)"
+        >
+          <span class="prop-key">{{ prop.key }}</span>
+          <span class="prop-val">{{ prop.value }}</span>
+        </div>
       </div>
-    </div>
-  </div>
+    </ElScrollbar>
+  </ElDialog>
 </template>
 
 <style scoped>
-.popup-overlay {
-  position: absolute;
-  z-index: 1000;
-  background: rgba(22, 33, 62, 0.95);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  min-width: 260px;
-  max-width: 360px;
-  max-height: 400px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  pointer-events: auto;
-}
-
-.popup-header {
+.dialog-header {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
   gap: 8px;
+  min-width: 0;
 }
 
-.popup-title {
-  font-size: 13px;
+.dialog-title {
+  font-size: 14px;
   font-weight: 600;
   color: var(--accent);
 }
 
-.popup-count {
-  font-size: 11px;
+.dialog-meta {
+  font-size: 12px;
   color: var(--text-secondary);
-  flex: 1;
 }
 
-.popup-loading {
-  font-size: 11px;
+.dialog-meta.loading {
   color: var(--accent);
-  flex: 1;
-  animation: pulse 1s infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+.section,
+.props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.popup-close {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 12px 0;
 }
 
-.popup-close:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--danger);
-}
-
-.popup-section {
-  padding: 8px 12px;
-}
-
-.popup-divider {
-  border-top: 1px solid var(--border);
-  margin: 0 12px;
-}
-
-.loading-section {
+.loading-state {
   display: flex;
   justify-content: center;
-  padding: 16px;
+  padding: 16px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.props-list {
-  overflow-y: auto;
-  max-height: 280px;
+.props-scroll {
+  padding-right: 4px;
 }
 
 .prop-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 4px 0;
+  align-items: flex-start;
   gap: 12px;
-  font-size: 12px;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background 0.15s;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.prop-row:hover {
-  background: rgba(14, 165, 233, 0.1);
+.prop-row.clickable {
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.prop-row.clickable:hover {
+  background: rgba(14, 165, 233, 0.12);
 }
 
 .prop-key {
   color: var(--text-secondary);
-  flex-shrink: 0;
-  max-width: 120px;
+  flex: 0 0 110px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
 }
 
 .prop-val {
   color: var(--text-primary);
   text-align: right;
-  word-break: break-all;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .prop-val.accent {
@@ -221,7 +219,42 @@ function copyValue(val: string) {
 
 .highlight-row {
   background: rgba(14, 165, 233, 0.08);
-  border-radius: 4px;
-  padding: 4px 6px;
+}
+</style>
+
+<style>
+.feature-dialog.el-dialog {
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(22, 33, 62, 0.96) !important;
+  border: 1px solid var(--border);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(16px);
+  padding: 0;
+}
+
+.feature-dialog .el-dialog__header {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(22, 33, 62, 0.96) !important;
+}
+
+.feature-dialog .el-dialog__body {
+  padding: 10px;
+  color: var(--text-primary);
+  background: rgba(22, 33, 62, 0.96) !important;
+}
+
+.feature-dialog .el-dialog__headerbtn {
+  top: 14px;
+}
+
+.feature-dialog .el-dialog__close {
+  color: var(--text-secondary);
+}
+
+.feature-dialog .el-dialog__close:hover {
+  color: var(--danger);
 }
 </style>
