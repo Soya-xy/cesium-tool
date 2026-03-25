@@ -1,15 +1,17 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, watch } from 'vue'
 import * as Cesium from 'cesium'
 import { useCesiumStore } from '@/stores/cesiumStore'
 import { useTilesetStore } from '@/stores/tilesetStore'
 import { useBimFloor } from '@/composables/useBimFloor'
 import { useFeatureVisualizer } from '@/composables/useFeatureVisualizer'
+import { useInteractionStore } from '@/stores/interactionStore'
 
 export function usePicking() {
   const cesiumStore = useCesiumStore()
   const tilesetStore = useTilesetStore()
   const bimFloor = useBimFloor()
   const visualizer = useFeatureVisualizer()
+  const interactionStore = useInteractionStore()
 
   const popupVisible = ref(false)
   const popupX = ref(0)
@@ -62,10 +64,15 @@ export function usePicking() {
     const viewer = cesiumStore.viewer
     if (!viewer) return
 
+    handler?.destroy()
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
     // 鼠标悬停高亮（由开关控制）
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      if (interactionStore.isDrawing) {
+        clearHighlight()
+        return
+      }
       if (!hoverHighlight.value) {
         clearHighlight()
         return
@@ -83,6 +90,11 @@ export function usePicking() {
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       // 取消前一次点击的待执行操作，避免快速连续点击时的竞态
       clearPendingTimers()
+      if (interactionStore.isDrawing) {
+        popupVisible.value = false
+        return
+      }
+      // === 同步阶段：仅执行快速操作（无 GPU 操作） ===
 
       // === 同步阶段 ===
 
@@ -167,6 +179,16 @@ export function usePicking() {
     viewer.camera.changed.addEventListener(() => {
       updatePopupScreenPosition(viewer)
     })
+
+    watch(
+      () => interactionStore.isDrawing,
+      (isDrawing) => {
+        if (isDrawing) {
+          clearPicking()
+          clearHighlight()
+        }
+      }
+    )
   }
 
   function clearPicking() {

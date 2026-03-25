@@ -19,17 +19,19 @@ export interface TilesetStats {
 export function getTilesetStats(tileset: Cesium.Cesium3DTileset): TilesetStats {
   const center = tileset.boundingSphere.center
   const carto = Cesium.Cartographic.fromCartesian(center)
+  const tilesetAny = tileset as any
+  const statistics = tilesetAny.statistics
 
   return {
-    version: (tileset.asset as any)?.version ?? 'unknown',
-    geometricError: tileset.root?.geometricError ?? tileset.geometricError,
+    version: tilesetAny.asset?.version ?? 'unknown',
+    geometricError: tileset.root?.geometricError ?? 0,
     totalTiles: countTiles(tileset.root),
-    loadedTiles: tileset.statistics?.numberOfLoadedTilesTotal ?? 0,
-    trianglesLoaded: tileset.statistics?.numberOfTrianglesLoaded ?? 0,
-    featuresLoaded: tileset.statistics?.numberOfFeaturesLoaded ?? 0,
-    textureMemory: tileset.statistics?.texturesByteLength ?? 0,
-    geometryMemory: tileset.statistics?.geometryByteLength ?? 0,
-    totalMemory: (tileset.statistics?.texturesByteLength ?? 0) + (tileset.statistics?.geometryByteLength ?? 0),
+    loadedTiles: statistics?.numberOfLoadedTilesTotal ?? 0,
+    trianglesLoaded: statistics?.numberOfTrianglesLoaded ?? 0,
+    featuresLoaded: statistics?.numberOfFeaturesLoaded ?? 0,
+    textureMemory: statistics?.texturesByteLength ?? 0,
+    geometryMemory: statistics?.geometryByteLength ?? 0,
+    totalMemory: (statistics?.texturesByteLength ?? 0) + (statistics?.geometryByteLength ?? 0),
     centerLon: Cesium.Math.toDegrees(carto.longitude),
     centerLat: Cesium.Math.toDegrees(carto.latitude),
     centerHeight: carto.height,

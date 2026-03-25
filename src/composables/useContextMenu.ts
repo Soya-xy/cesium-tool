@@ -1,8 +1,10 @@
 import { ref, onUnmounted } from 'vue'
 import * as Cesium from 'cesium'
 import { useCesiumStore } from '@/stores/cesiumStore'
-import { cartesianToCoordinate, formatDegree } from '@/utils/coordinate'
+import { cartesianToCoordinate } from '@/utils/coordinate'
 import { ElMessage } from 'element-plus'
+import { useDrawingTools } from '@/composables/useDrawingTools'
+import { useInteractionStore } from '@/stores/interactionStore'
 
 export interface ContextMenuItem {
   index: string
@@ -14,6 +16,8 @@ export interface ContextMenuItem {
 
 export function useContextMenu() {
   const cesiumStore = useCesiumStore()
+  const drawingTools = useDrawingTools()
+  const interactionStore = useInteractionStore()
   const menuVisible = ref(false)
   const menuX = ref(0)
   const menuY = ref(0)
@@ -25,9 +29,13 @@ export function useContextMenu() {
     const viewer = cesiumStore.viewer
     if (!viewer) return
 
+    handler?.destroy()
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (interactionStore.consumeContextMenuBlock()) return
+      if (interactionStore.isDrawing) return
+
       // 将画布坐标转换为视口坐标
       const canvas = viewer.scene.canvas
       const rect = canvas.getBoundingClientRect()
@@ -57,6 +65,12 @@ export function useContextMenu() {
 
   function getMenuItems(): ContextMenuItem[] {
     const viewer = cesiumStore.viewer
+
+    function activateTool(mode: Parameters<typeof drawingTools.startTool>[0]) {
+      drawingTools.startTool(mode)
+      menuVisible.value = false
+    }
+
     return [
       {
         index: 'coordinate',
@@ -96,10 +110,10 @@ export function useContextMenu() {
         icon: 'Lollipop',
         label: '图上量算',
         children: [
-          { index: 'measure-space', icon: 'Rank', label: '空间距离', action: () => { ElMessage.info('空间距离量算 (待实现)'); menuVisible.value = false } },
-          { index: 'measure-horizontal', icon: 'Minus', label: '水平距离', action: () => { ElMessage.info('水平距离量算 (待实现)'); menuVisible.value = false } },
-          { index: 'measure-area', icon: 'Grid', label: '面积量算', action: () => { ElMessage.info('面积量算 (待实现)'); menuVisible.value = false } },
-          { index: 'measure-height', icon: 'Sort', label: '高度差', action: () => { ElMessage.info('高度差量算 (待实现)'); menuVisible.value = false } },
+          { index: 'measure-space', icon: 'Rank', label: '空间距离', action: () => activateTool('measure-space') },
+          { index: 'measure-horizontal', icon: 'Minus', label: '水平距离', action: () => activateTool('measure-horizontal') },
+          { index: 'measure-area', icon: 'Grid', label: '面积量算', action: () => activateTool('measure-area') },
+          { index: 'measure-height', icon: 'Sort', label: '高度差', action: () => activateTool('measure-height') },
         ],
       },
       {
@@ -107,10 +121,10 @@ export function useContextMenu() {
         icon: 'MapLocation',
         label: '图上标记',
         children: [
-          { index: 'mark-point', icon: 'LocationFilled', label: '点标记', action: () => { ElMessage.info('点标记 (待实现)'); menuVisible.value = false } },
-          { index: 'mark-line', icon: 'Share', label: '线标记', action: () => { ElMessage.info('线标记 (待实现)'); menuVisible.value = false } },
-          { index: 'mark-polygon', icon: 'CopyDocument', label: '面标记', action: () => { ElMessage.info('面标记 (待实现)'); menuVisible.value = false } },
-          { index: 'mark-text', icon: 'EditPen', label: '文字标注', action: () => { ElMessage.info('文字标注 (待实现)'); menuVisible.value = false } },
+          { index: 'mark-point', icon: 'LocationFilled', label: '点标记', action: () => activateTool('mark-point') },
+          { index: 'mark-line', icon: 'Share', label: '线标记', action: () => activateTool('mark-line') },
+          { index: 'mark-polygon', icon: 'CopyDocument', label: '面标记', action: () => activateTool('mark-polygon') },
+          { index: 'mark-text', icon: 'EditPen', label: '文字标注', action: () => activateTool('mark-text') },
         ],
       },
       {
@@ -211,7 +225,7 @@ export function useContextMenu() {
           },
           {
             index: 'scene-sun', icon: 'Sunny', label: '太阳', action: () => {
-              if (!viewer) return
+              if (!viewer || !viewer.scene.sun) return
               viewer.scene.sun.show = !viewer.scene.sun.show
               ElMessage.success(`太阳 ${viewer.scene.sun.show ? '显示' : '隐藏'}`)
               menuVisible.value = false
@@ -219,7 +233,7 @@ export function useContextMenu() {
           },
           {
             index: 'scene-moon', icon: 'Moon', label: '月亮', action: () => {
-              if (!viewer) return
+              if (!viewer || !viewer.scene.moon) return
               viewer.scene.moon.show = !viewer.scene.moon.show
               ElMessage.success(`月亮 ${viewer.scene.moon.show ? '显示' : '隐藏'}`)
               menuVisible.value = false
@@ -227,7 +241,7 @@ export function useContextMenu() {
           },
           {
             index: 'scene-skybox', icon: 'Star', label: '星空', action: () => {
-              if (!viewer) return
+              if (!viewer || !viewer.scene.skyBox) return
               viewer.scene.skyBox.show = !viewer.scene.skyBox.show
               ElMessage.success(`星空 ${viewer.scene.skyBox.show ? '显示' : '隐藏'}`)
               menuVisible.value = false
@@ -254,5 +268,6 @@ export function useContextMenu() {
     clickCoordinate,
     getMenuItems,
     closeMenu,
+    drawingTools,
   }
 }

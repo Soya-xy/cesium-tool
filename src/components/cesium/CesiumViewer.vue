@@ -20,6 +20,7 @@ onMounted(() => {
   if (!containerRef.value) return
   cesium.initViewer(containerRef.value)
   picking.setupPicking()
+  contextMenu.drawingTools.setupDrawingTools()
   contextMenu.setupContextMenu()
 })
 </script>

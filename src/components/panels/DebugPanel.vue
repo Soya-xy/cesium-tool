@@ -29,21 +29,21 @@ function toggleAtmosphere() {
 
 function toggleSun() {
   const viewer = cesiumStore.viewer
-  if (!viewer) return
+  if (!viewer || !viewer.scene.sun) return
   showSun.value = !showSun.value
   viewer.scene.sun.show = showSun.value
 }
 
 function toggleMoon() {
   const viewer = cesiumStore.viewer
-  if (!viewer) return
+  if (!viewer || !viewer.scene.moon) return
   showMoon.value = !showMoon.value
   viewer.scene.moon.show = showMoon.value
 }
 
 function toggleSkyBox() {
   const viewer = cesiumStore.viewer
-  if (!viewer) return
+  if (!viewer || !viewer.scene.skyBox) return
   showSkyBox.value = !showSkyBox.value
   viewer.scene.skyBox.show = showSkyBox.value
 }

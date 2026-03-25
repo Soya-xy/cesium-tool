@@ -91,6 +91,7 @@ function handleSelect(index: string) {
         class="context-el-menu"
         mode="vertical"
         :collapse="false"
+        unique-opened
         @select="handleSelect"
       >
         <template v-for="item in items" :key="item.index">
@@ -153,14 +154,49 @@ function handleSelect(index: string) {
   margin: 1px 4px;
 }
 
+.context-el-menu :deep(.el-menu),
+.context-el-menu :deep(.el-menu--inline) {
+  background: rgba(22, 33, 62, 0.96) !important;
+}
+
+.context-el-menu :deep(.el-sub-menu .el-menu-item) {
+  height: 36px;
+  line-height: 36px;
+  padding-left: 32px !important;
+  color: #e0e0e0 !important;
+  background: rgba(22, 33, 62, 0.96) !important;
+}
+
+.context-el-menu :deep(.el-sub-menu.is-opened > .el-menu) {
+  padding: 4px 0;
+  margin: 2px 0 4px;
+  background: rgba(22, 33, 62, 0.96) !important;
+}
+
 .context-el-menu :deep(.el-menu-item:hover),
 .context-el-menu :deep(.el-sub-menu__title:hover) {
   background: rgba(14, 165, 233, 0.18) !important;
   color: #38bdf8 !important;
 }
 
+.context-el-menu :deep(.el-sub-menu .el-menu-item:hover) {
+  background: rgba(14, 165, 233, 0.18) !important;
+  color: #38bdf8 !important;
+}
+
 .context-el-menu :deep(.el-menu-item.is-active) {
   color: #0ea5e9 !important;
+}
+
+.context-el-menu :deep(.el-sub-menu .el-menu-item.is-active) {
+  color: #0ea5e9 !important;
+  background: rgba(14, 165, 233, 0.12) !important;
+}
+
+.context-el-menu :deep(.el-menu-item.is-disabled),
+.context-el-menu :deep(.el-sub-menu .el-menu-item.is-disabled) {
+  color: rgba(224, 224, 224, 0.45) !important;
+  background: rgba(22, 33, 62, 0.96) !important;
 }
 
 .context-el-menu :deep(.el-sub-menu__icon-arrow) {
@@ -189,9 +225,14 @@ function handleSelect(index: string) {
   --el-menu-text-color: #e0e0e0 !important;
   --el-menu-hover-text-color: #38bdf8 !important;
   --el-menu-active-color: #0ea5e9 !important;
+  --el-bg-color-overlay: rgba(22, 33, 62, 0.98) !important;
+  --el-border-color-light: rgba(42, 42, 74, 0.85) !important;
 }
 
-.context-submenu-popper .el-menu {
+.context-submenu-popper.el-popper,
+.context-submenu-popper .el-popper__content,
+.context-submenu-popper .el-menu,
+.context-submenu-popper .el-menu--popup {
   background: rgba(22, 33, 62, 0.96) !important;
   backdrop-filter: blur(16px);
   border: 1px solid rgba(42, 42, 74, 0.8) !important;
@@ -199,6 +240,10 @@ function handleSelect(index: string) {
   padding: 4px 0;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   min-width: 140px;
+}
+
+.context-submenu-popper.el-popper {
+  padding: 0 !important;
 }
 
 .context-submenu-popper .el-menu-item {
@@ -216,7 +261,23 @@ function handleSelect(index: string) {
   color: #38bdf8 !important;
 }
 
+.context-submenu-popper .el-menu-item.is-active,
+.context-submenu-popper .el-sub-menu__title.is-active {
+  color: #38bdf8 !important;
+}
+
+.context-submenu-popper .el-menu-item.is-disabled {
+  color: rgba(224, 224, 224, 0.45) !important;
+  background: transparent !important;
+}
+
 .context-submenu-popper .el-menu-item .el-icon {
   margin-right: 8px;
+  color: inherit;
+}
+
+.context-submenu-popper .el-popper__arrow::before {
+  background: rgba(22, 33, 62, 0.96) !important;
+  border-color: rgba(42, 42, 74, 0.85) !important;
 }
 </style>

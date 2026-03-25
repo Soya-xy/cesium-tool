@@ -29,7 +29,7 @@ async function handleLoad() {
   <div class="toolbar">
     <div class="toolbar-brand">
       <span class="brand-icon">🌍</span>
-      <span class="brand-text">Cesium 调试平台</span>
+      <span class="brand-text">GASON Cesium Devtools</span>
     </div>
     <div class="toolbar-input">
       <input

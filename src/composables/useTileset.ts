@@ -23,7 +23,6 @@ export function useTileset() {
     try {
       const tileset = await Cesium.Cesium3DTileset.fromUrl(url, {
         maximumScreenSpaceError: 16,
-        maximumMemoryUsage: 512,
       })
 
       viewer.scene.primitives.add(tileset)
