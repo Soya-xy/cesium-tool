@@ -1,9 +1,34 @@
 import * as Cesium from 'cesium'
 import { useCesiumStore } from '@/stores/cesiumStore'
 
+type FeatureBoundsResult = {
+  exact: boolean
+  bottomPoint: Cesium.Cartesian3
+  sphere: Cesium.BoundingSphere
+}
+
+type RuntimeFeatureMatch = {
+  exact: boolean
+  bottomPoint: Cesium.Cartesian3
+  sphere: Cesium.BoundingSphere
+}
+
+type LocalFeatureGeometry = {
+  bottomPoint: Cesium.Cartesian3
+  sphere: Cesium.BoundingSphere
+}
+
+type CesiumInternalsType = typeof Cesium & {
+  ModelReader?: {
+    readAttributeAsTypedArray: (attribute: any) => ArrayLike<number>
+    readIndicesAsTriangleIndicesTypedArray: (indices: any, primitiveType: number) => ArrayLike<number>
+  }
+}
+
+const CesiumInternals = Cesium as CesiumInternalsType
+
 /**
  * 构件可视化：包围球线框 + 离地测量线 + 距离标注
- * 通过构件 ID 缓存结果，保证同一构件多次点击离地高度一致。
  */
 export function useFeatureVisualizer() {
   const cesiumStore = useCesiumStore()
@@ -11,15 +36,484 @@ export function useFeatureVisualizer() {
   // 当前可视化实体
   let entities: Cesium.Entity[] = []
 
-  // 按构件 ID 缓存包围球（同一构件无论点击哪个位置，结果一致）
-  const boundsCache = new Map<string, Cesium.BoundingSphere>()
+  function getFeatureNumericId(feature: Cesium.Cesium3DTileFeature): number | null {
+    const raw = (feature as any).featureId ?? (feature as any)._featureId ?? (feature as any)._batchId
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return raw
+    }
 
-  /** 生成构件唯一标识：tile URL + batchId */
-  function getCacheKey(feature: Cesium.Cesium3DTileFeature): string {
-    const f = feature as any
-    const url = f._content?._tile?._contentUrl || f._content?.url || ''
-    const batchId = f._batchId ?? -1
-    return `${url}__${batchId}`
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  function getModelFeatureIdLabel(model: any): string | null {
+    return model?.featureIdLabel ?? model?._featureIdLabel ?? 'featureId_0'
+  }
+
+  function getModelPropertyTableId(model: any): number | null {
+    const raw = model?.featureTableId ?? model?._featureTableId
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
+  }
+
+  function isFeatureIdAttributeSet(featureIdSet: any): boolean {
+    return featureIdSet?.setIndex !== undefined
+  }
+
+  function isFeatureIdImplicitRange(featureIdSet: any): boolean {
+    return featureIdSet?.offset !== undefined || featureIdSet?.repeat !== undefined
+  }
+
+  function isFeatureIdTextureSet(featureIdSet: any): boolean {
+    return featureIdSet?.textureReader !== undefined
+  }
+
+  function getPrimitiveFeatureIdSet(primitive: any, model: any): any | null {
+    const featureIds = primitive?.featureIds
+    if (!Array.isArray(featureIds) || featureIds.length === 0) {
+      return null
+    }
+
+    const featureIdLabel = getModelFeatureIdLabel(model)
+    if (featureIdLabel) {
+      const matched = featureIds.find((set: any) => set?.positionalLabel === featureIdLabel || set?.label === featureIdLabel)
+      if (matched) {
+        return matched
+      }
+    }
+
+    return featureIds[0] ?? null
+  }
+
+  function getPositionAttribute(primitive: any): any | null {
+    const attributes = primitive?.attributes
+    if (!Array.isArray(attributes)) {
+      return null
+    }
+
+    return attributes.find((attribute: any) => attribute?.semantic === 'POSITION') ?? null
+  }
+
+  function getFeatureIdAttribute(primitive: any, featureIdSet: any): any | null {
+    if (!isFeatureIdAttributeSet(featureIdSet)) {
+      return null
+    }
+
+    const attributes = primitive?.attributes
+    if (!Array.isArray(attributes)) {
+      return null
+    }
+
+    return attributes.find((attribute: any) => (
+      attribute?.semantic === '_FEATURE_ID'
+      && attribute?.setIndex === featureIdSet.setIndex
+    )) ?? null
+  }
+
+  function readAttributeTypedArray(attribute: any): ArrayLike<number> | null {
+    if (!attribute) {
+      return null
+    }
+
+    if (attribute.typedArray) {
+      return attribute.typedArray as ArrayLike<number>
+    }
+
+    const modelReader = CesiumInternals.ModelReader
+    if (!modelReader?.readAttributeAsTypedArray) {
+      return null
+    }
+
+    try {
+      return modelReader.readAttributeAsTypedArray(attribute)
+    }
+    catch {
+      return null
+    }
+  }
+
+  function readTriangleIndices(primitive: any): ArrayLike<number> | null {
+    if (!primitive?.indices) {
+      return null
+    }
+
+    const modelReader = CesiumInternals.ModelReader
+    if (modelReader?.readIndicesAsTriangleIndicesTypedArray) {
+      try {
+        return modelReader.readIndicesAsTriangleIndicesTypedArray(primitive.indices, primitive.primitiveType)
+      }
+      catch {
+        return null
+      }
+    }
+
+    return primitive.indices.typedArray ? primitive.indices.typedArray as ArrayLike<number> : null
+  }
+
+  function featureIdSetCanContainFeature(primitive: any, featureIdSet: any, featureId: number, propertyTableId: number | null): boolean {
+    if (!featureIdSet) {
+      return false
+    }
+
+    if (propertyTableId !== null && featureIdSet.propertyTableId !== propertyTableId) {
+      return false
+    }
+
+    if (typeof featureIdSet.featureCount === 'number' && featureIdSet.featureCount > 0) {
+      if (isFeatureIdAttributeSet(featureIdSet) || isFeatureIdTextureSet(featureIdSet)) {
+        if (featureId < 0 || featureId >= featureIdSet.featureCount) {
+          return false
+        }
+      }
+      else if (isFeatureIdImplicitRange(featureIdSet)) {
+        const offset = Number(featureIdSet.offset ?? 0)
+        if (featureId < offset || featureId >= offset + featureIdSet.featureCount) {
+          return false
+        }
+      }
+    }
+
+    if (isFeatureIdAttributeSet(featureIdSet)) {
+      const featureIdAttribute = getFeatureIdAttribute(primitive, featureIdSet)
+      const featureIds = readAttributeTypedArray(featureIdAttribute)
+      if (!featureIds) {
+        return false
+      }
+
+      for (let i = 0; i < featureIds.length; i++) {
+        if (Number(featureIds[i]) === featureId) {
+          return true
+        }
+      }
+      return false
+    }
+
+    if (isFeatureIdImplicitRange(featureIdSet)) {
+      return true
+    }
+
+    return isFeatureIdTextureSet(featureIdSet) && featureIdSet.featureCount === 1
+  }
+
+  function includeVertexInGeometry(
+    positions: ArrayLike<number>,
+    vertexIndex: number,
+    geometry: {
+      count: number
+      lowestHeight: number
+      lowestPoint: Cesium.Cartesian3 | null
+      max: Cesium.Cartesian3
+      min: Cesium.Cartesian3
+    },
+    worldMatrix: Cesium.Matrix4,
+  ) {
+    const offset = vertexIndex * 3
+    if (offset + 2 >= positions.length) {
+      return
+    }
+
+    const x = Number(positions[offset])
+    const y = Number(positions[offset + 1])
+    const z = Number(positions[offset + 2])
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      return
+    }
+
+    const worldPoint = Cesium.Matrix4.multiplyByPoint(
+      worldMatrix,
+      Cesium.Cartesian3.fromElements(x, y, z, new Cesium.Cartesian3()),
+      new Cesium.Cartesian3(),
+    )
+    const worldHeight = getCartesianHeight(worldPoint)
+
+    if (geometry.count === 0) {
+      Cesium.Cartesian3.fromElements(x, y, z, geometry.min)
+      Cesium.Cartesian3.fromElements(x, y, z, geometry.max)
+      geometry.lowestPoint = worldPoint
+      geometry.lowestHeight = worldHeight
+      geometry.count = 1
+      return
+    }
+
+    geometry.min.x = Math.min(geometry.min.x, x)
+    geometry.min.y = Math.min(geometry.min.y, y)
+    geometry.min.z = Math.min(geometry.min.z, z)
+    geometry.max.x = Math.max(geometry.max.x, x)
+    geometry.max.y = Math.max(geometry.max.y, y)
+    geometry.max.z = Math.max(geometry.max.z, z)
+    if (worldHeight < geometry.lowestHeight) {
+      geometry.lowestHeight = worldHeight
+      geometry.lowestPoint = worldPoint
+    }
+    geometry.count++
+  }
+
+  function buildLocalFeatureGeometry(geometry: {
+    count: number
+    lowestHeight: number
+    lowestPoint: Cesium.Cartesian3 | null
+    max: Cesium.Cartesian3
+    min: Cesium.Cartesian3
+  }): LocalFeatureGeometry | null {
+    if (geometry.count === 0 || !geometry.lowestPoint) {
+      return null
+    }
+
+    return {
+      bottomPoint: Cesium.Cartesian3.clone(geometry.lowestPoint, new Cesium.Cartesian3()),
+      sphere: Cesium.BoundingSphere.fromCornerPoints(geometry.min, geometry.max, new Cesium.BoundingSphere()),
+    }
+  }
+
+  function computeBoundsFromFeatureIdAttribute(
+    primitive: any,
+    featureIdSet: any,
+    featureId: number,
+    worldMatrix: Cesium.Matrix4,
+  ): LocalFeatureGeometry | null {
+    const positionAttribute = getPositionAttribute(primitive)
+    const featureIdAttribute = getFeatureIdAttribute(primitive, featureIdSet)
+    const positions = readAttributeTypedArray(positionAttribute)
+    const featureIds = readAttributeTypedArray(featureIdAttribute)
+    if (!positionAttribute || !positions || !featureIds) {
+      return null
+    }
+
+    const geometry = {
+      count: 0,
+      lowestPoint: null as Cesium.Cartesian3 | null,
+      lowestHeight: Number.POSITIVE_INFINITY,
+      min: new Cesium.Cartesian3(),
+      max: new Cesium.Cartesian3(),
+    }
+    const vertexCount = Math.min(positionAttribute.count ?? 0, featureIds.length)
+    for (let i = 0; i < vertexCount; i++) {
+      if (Number(featureIds[i]) !== featureId) {
+        continue
+      }
+      includeVertexInGeometry(positions, i, geometry, worldMatrix)
+    }
+
+    return buildLocalFeatureGeometry(geometry)
+  }
+
+  function computeBoundsFromImplicitRange(
+    primitive: any,
+    featureIdSet: any,
+    featureId: number,
+    worldMatrix: Cesium.Matrix4,
+  ): LocalFeatureGeometry | null {
+    const positionAttribute = getPositionAttribute(primitive)
+    const positions = readAttributeTypedArray(positionAttribute)
+    if (!positionAttribute || !positions) {
+      return null
+    }
+
+    const offset = Number(featureIdSet.offset ?? 0)
+    const repeat = Math.max(1, Number(featureIdSet.repeat ?? 1))
+    const geometry = {
+      count: 0,
+      lowestPoint: null as Cesium.Cartesian3 | null,
+      lowestHeight: Number.POSITIVE_INFINITY,
+      min: new Cesium.Cartesian3(),
+      max: new Cesium.Cartesian3(),
+    }
+
+    const triangleIndices = readTriangleIndices(primitive)
+    if (triangleIndices) {
+      for (let cursor = 0; cursor < triangleIndices.length; cursor += 3) {
+        const triangleFeatureId = offset + Math.floor(cursor / repeat)
+        if (triangleFeatureId !== featureId) {
+          continue
+        }
+
+        includeVertexInGeometry(positions, Number(triangleIndices[cursor]), geometry, worldMatrix)
+        if (cursor + 1 < triangleIndices.length) {
+          includeVertexInGeometry(positions, Number(triangleIndices[cursor + 1]), geometry, worldMatrix)
+        }
+        if (cursor + 2 < triangleIndices.length) {
+          includeVertexInGeometry(positions, Number(triangleIndices[cursor + 2]), geometry, worldMatrix)
+        }
+      }
+    }
+    else {
+      const vertexCount = positionAttribute.count ?? 0
+      for (let i = 0; i < vertexCount; i++) {
+        const currentFeatureId = offset + Math.floor(i / repeat)
+        if (currentFeatureId !== featureId) {
+          continue
+        }
+        includeVertexInGeometry(positions, i, geometry, worldMatrix)
+      }
+    }
+
+    return buildLocalFeatureGeometry(geometry)
+  }
+
+  function computeWholePrimitiveGeometry(primitive: any, worldMatrix: Cesium.Matrix4): LocalFeatureGeometry | null {
+    const positionAttribute = getPositionAttribute(primitive)
+    const positions = readAttributeTypedArray(positionAttribute)
+    if (!positionAttribute || !positions) {
+      return null
+    }
+
+    const geometry = {
+      count: 0,
+      lowestPoint: null as Cesium.Cartesian3 | null,
+      lowestHeight: Number.POSITIVE_INFINITY,
+      min: new Cesium.Cartesian3(),
+      max: new Cesium.Cartesian3(),
+    }
+    const vertexCount = positionAttribute.count ?? 0
+    for (let i = 0; i < vertexCount; i++) {
+      includeVertexInGeometry(positions, i, geometry, worldMatrix)
+    }
+
+    return buildLocalFeatureGeometry(geometry)
+  }
+
+  function computeLocalFeatureGeometry(
+    primitive: any,
+    featureIdSet: any,
+    featureId: number,
+    worldMatrix: Cesium.Matrix4,
+  ): LocalFeatureGeometry | null {
+    if (isFeatureIdAttributeSet(featureIdSet)) {
+      return computeBoundsFromFeatureIdAttribute(primitive, featureIdSet, featureId, worldMatrix)
+    }
+
+    if (isFeatureIdImplicitRange(featureIdSet)) {
+      return computeBoundsFromImplicitRange(primitive, featureIdSet, featureId, worldMatrix)
+    }
+
+    return null
+  }
+
+  function getRuntimePrimitiveModelMatrix(model: any, runtimeNode: any, runtimePrimitive: any): Cesium.Matrix4 | null {
+    const drawCommand = runtimePrimitive?.drawCommand
+    if (drawCommand?.modelMatrix) {
+      return drawCommand.modelMatrix as Cesium.Matrix4
+    }
+
+    const sceneGraph = model?._sceneGraph
+    const computedModelMatrix = sceneGraph?._computedModelMatrix ?? sceneGraph?.computedModelMatrix
+    if (computedModelMatrix && runtimeNode?.computedTransform) {
+      return Cesium.Matrix4.multiplyTransformation(
+        computedModelMatrix,
+        runtimeNode.computedTransform,
+        new Cesium.Matrix4(),
+      )
+    }
+
+    return null
+  }
+
+  function getRuntimePrimitiveWorldSphere(
+    model: any,
+    runtimeNode: any,
+    runtimePrimitive: any,
+    localSphere?: Cesium.BoundingSphere | null,
+  ): Cesium.BoundingSphere | null {
+    const drawCommand = runtimePrimitive?.drawCommand
+    if (!localSphere && drawCommand?.boundingVolume) {
+      return Cesium.BoundingSphere.clone(drawCommand.boundingVolume as Cesium.BoundingSphere, new Cesium.BoundingSphere())
+    }
+
+    const sourceSphere = localSphere ?? runtimePrimitive?.boundingSphere
+    if (!sourceSphere?.radius || sourceSphere.radius <= 0) {
+      return null
+    }
+
+    const modelMatrix = getRuntimePrimitiveModelMatrix(model, runtimeNode, runtimePrimitive)
+    if (!modelMatrix) {
+      return null
+    }
+
+    return Cesium.BoundingSphere.transform(sourceSphere, modelMatrix, new Cesium.BoundingSphere())
+  }
+
+  function getCartesianHeight(point: Cesium.Cartesian3): number {
+    const cartographic = Cesium.Cartographic.fromCartesian(point)
+    return cartographic?.height ?? Number.POSITIVE_INFINITY
+  }
+
+  /**
+   * 尝试从 Cesium 内部模型结构获取单个构件的包围球（世界坐标）。
+   * 只有拿到“单构件”级别的精确包围球才返回；避免再落到整块 tile 上出现相同高度。
+   */
+  function getFeatureBoundsFromInternal(feature: Cesium.Cesium3DTileFeature): FeatureBoundsResult | null {
+    const model = (feature as any)._content?._model
+    const runtimeNodes = model?._sceneGraph?._runtimeNodes
+    const featureId = getFeatureNumericId(feature)
+    if (!model || !Array.isArray(runtimeNodes) || featureId === null) {
+      return null
+    }
+
+    const propertyTableId = getModelPropertyTableId(model)
+    const matches: RuntimeFeatureMatch[] = []
+
+    for (const runtimeNode of runtimeNodes) {
+      if (!runtimeNode?.runtimePrimitives?.length) {
+        continue
+      }
+
+      for (const runtimePrimitive of runtimeNode.runtimePrimitives) {
+        const primitive = runtimePrimitive?.primitive
+        const runtimeWorldMatrix = getRuntimePrimitiveModelMatrix(model, runtimeNode, runtimePrimitive)
+        const featureIdSet = getPrimitiveFeatureIdSet(primitive, model)
+        if (!runtimeWorldMatrix || !featureIdSet || !featureIdSetCanContainFeature(primitive, featureIdSet, featureId, propertyTableId)) {
+          continue
+        }
+
+        const localGeometry = computeLocalFeatureGeometry(primitive, featureIdSet, featureId, runtimeWorldMatrix)
+        if (localGeometry) {
+          const worldSphere = getRuntimePrimitiveWorldSphere(model, runtimeNode, runtimePrimitive, localGeometry.sphere)
+          if (worldSphere) {
+            matches.push({ exact: true, bottomPoint: localGeometry.bottomPoint, sphere: worldSphere })
+          }
+          continue
+        }
+
+        // featureCount 为 1 说明整个 primitive 就是一个构件，直接按整个 primitive 的几何最低点计算。
+        if (featureIdSet.featureCount === 1) {
+          const wholePrimitiveGeometry = computeWholePrimitiveGeometry(primitive, runtimeWorldMatrix)
+          if (!wholePrimitiveGeometry) {
+            continue
+          }
+
+          const worldSphere = getRuntimePrimitiveWorldSphere(model, runtimeNode, runtimePrimitive, wholePrimitiveGeometry.sphere)
+          if (worldSphere) {
+            matches.push({ exact: true, bottomPoint: wholePrimitiveGeometry.bottomPoint, sphere: worldSphere })
+          }
+        }
+      }
+    }
+
+    if (matches.length === 0) {
+      return null
+    }
+
+    if (matches.length === 1) {
+      return {
+        exact: matches[0].exact,
+        bottomPoint: matches[0].bottomPoint,
+        sphere: matches[0].sphere,
+      }
+    }
+
+    const lowestMatch = matches.reduce((currentLowest, match) => {
+      return getCartesianHeight(match.bottomPoint) < getCartesianHeight(currentLowest.bottomPoint)
+        ? match
+        : currentLowest
+    })
+
+    return {
+      exact: matches.every(match => match.exact),
+      bottomPoint: lowestMatch.bottomPoint,
+      sphere: Cesium.BoundingSphere.fromBoundingSpheres(
+        matches.map(match => match.sphere),
+        new Cesium.BoundingSphere(),
+      ),
+    }
   }
 
   /** 清除所有可视化实体 */
@@ -33,141 +527,36 @@ export function useFeatureVisualizer() {
   }
 
   /**
-   * 尝试从 Cesium 内部模型结构获取单个构件的包围球（世界坐标）。
-   * 多种内部路径尝试，全部失败返回 null。
-   */
-  function getFeatureBoundsFromInternal(feature: Cesium.Cesium3DTileFeature): Cesium.BoundingSphere | null {
-    const f = feature as any
-    const batchId = f._batchId
-    const content = f._content
-    const model = content?._model
-    if (!model || batchId == null) return null
-
-    const modelMatrix = model.modelMatrix || Cesium.Matrix4.IDENTITY
-
-    // 方式1：runtime node 直接映射
-    try {
-      const nodes = model._sceneGraph?._runtimeNodes
-      if (nodes?.length > batchId) {
-        const node = nodes[batchId]
-        const bs = node?._boundingSphere || node?.computedBoundingSphere
-        if (bs?.radius > 0) {
-          const worldCenter = Cesium.Matrix4.multiplyByPoint(
-            modelMatrix, bs.center, new Cesium.Cartesian3(),
-          )
-          return new Cesium.BoundingSphere(worldCenter, bs.radius)
-        }
-      }
-    } catch { /* 降级 */ }
-
-    // 方式2：遍历 components nodes，按 index 匹配
-    try {
-      const compNodes = model._loader?._components?.nodes
-      if (compNodes) {
-        for (const node of compNodes) {
-          if (node.index === batchId || node.name === String(batchId)) {
-            // 尝试从 node 的 primitives 获取包围球
-            if (node.primitives?.length) {
-              for (const prim of node.primitives) {
-                if (prim.boundingSphere?.radius > 0) {
-                  const worldCenter = Cesium.Matrix4.multiplyByPoint(
-                    modelMatrix, prim.boundingSphere.center, new Cesium.Cartesian3(),
-                  )
-                  return new Cesium.BoundingSphere(worldCenter, prim.boundingSphere.radius)
-                }
-              }
-            }
-            // 尝试 node 的 translation
-            if (node.translation) {
-              const t = node.translation
-              const localCenter = new Cesium.Cartesian3(t.x ?? t[0], t.y ?? t[1], t.z ?? t[2])
-              const worldCenter = Cesium.Matrix4.multiplyByPoint(
-                modelMatrix, localCenter, new Cesium.Cartesian3(),
-              )
-              return new Cesium.BoundingSphere(worldCenter, 2)
-            }
-          }
-        }
-      }
-    } catch { /* 降级 */ }
-
-    // 方式3：runtime primitives 中找比 tile 小的
-    try {
-      const rps = model._sceneGraph?._runtimePrimitives
-      const tileR = content?._tile?.boundingSphere?.radius ?? Infinity
-      if (rps?.length) {
-        for (const rp of rps) {
-          const bs = rp?._boundingSphere
-          if (bs?.radius > 0 && bs.radius < tileR * 0.3) {
-            const worldCenter = Cesium.Matrix4.multiplyByPoint(
-              modelMatrix, bs.center, new Cesium.Cartesian3(),
-            )
-            return new Cesium.BoundingSphere(worldCenter, bs.radius)
-          }
-        }
-      }
-    } catch { /* 降级 */ }
-
-    return null
-  }
-
-  /** 估算包围球半径 */
-  function estimateRadius(feature: Cesium.Cesium3DTileFeature): number {
-    try {
-      const content = (feature as any)._content
-      const tile = content?._tile
-      if (tile?.boundingSphere && content?.featuresLength > 1) {
-        return tile.boundingSphere.radius / Math.cbrt(content.featuresLength)
-      }
-      if (tile?.boundingSphere) {
-        return tile.boundingSphere.radius * 0.1
-      }
-    } catch { /* 降级 */ }
-    return 3
-  }
-
-  /**
    * 显示单个构件的包围球线框、垂直测量线和离地标注。
-   * 同一构件（相同 ID）无论点击哪里，离地高度和包围球始终一致。
+   * 离地高度按构件几何最低点到地面的垂直距离计算。
    *
    * @param feature 选中的构件
-   * @param pickedPosition 点击位置（仅首次降级时使用，后续从缓存读取）
    * @returns 离地高度（米），失败返回 null
    */
-  function show(feature: Cesium.Cesium3DTileFeature, pickedPosition?: Cesium.Cartesian3): number | null {
+  function show(feature: Cesium.Cesium3DTileFeature): number | null {
     const viewer = cesiumStore.viewer
     if (!viewer) return null
 
     clear()
+    const resolved = getFeatureBoundsFromInternal(feature)
 
-    const key = getCacheKey(feature)
-    let bs: Cesium.BoundingSphere
-
-    // 1. 优先读缓存（保证同一构件结果一致）
-    const cached = boundsCache.get(key)
-    if (cached) {
-      bs = cached
-    } else {
-      // 2. 尝试内部 API 获取精确包围球
-      const internal = getFeatureBoundsFromInternal(feature)
-      if (internal) {
-        bs = internal
-      } else {
-        // 3. 降级：以点击位置为中心，估算半径，缓存后不再变化
-        const center = pickedPosition || feature.tileset.boundingSphere.center
-        const radius = estimateRadius(feature)
-        bs = new Cesium.BoundingSphere(center, radius)
-      }
-      boundsCache.set(key, bs)
+    // 没拿到精确包围球时，宁可不显示，也不再回退到 tile 级包围球误导高度。
+    if (!resolved?.exact) {
+      return null
     }
 
+    const bs = resolved.sphere
     const center = bs.center
     const radius = bs.radius
-    const carto = Cesium.Cartographic.fromCartesian(center)
+    const bottomPos = resolved.bottomPoint
+    const bottomCarto = Cesium.Cartographic.fromCartesian(bottomPos, viewer.scene.globe.ellipsoid)
+    if (!bottomCarto) {
+      return null
+    }
 
-    // 地面高度（基于构件包围球中心，同一构件始终一致）
-    const terrainH = viewer.scene.globe.getHeight(carto)
-    const groundH = terrainH !== undefined ? carto.height - terrainH : null
+    // 地面高度按构件底部计算，更符合“离地高度”的语义。
+    const terrainH = viewer.scene.globe.getHeight(bottomCarto)
+    const groundH = terrainH !== undefined ? bottomCarto.height - terrainH : null
 
     // 1. 包围球线框
     entities.push(viewer.entities.add({
@@ -185,13 +574,13 @@ export function useFeatureVisualizer() {
     // 2. 垂直测量线 + 地面标记 + 距离标注
     if (terrainH !== undefined && groundH !== null) {
       const groundPos = Cesium.Cartesian3.fromRadians(
-        carto.longitude, carto.latitude, terrainH,
+        bottomCarto.longitude, bottomCarto.latitude, terrainH,
       )
 
       // 虚线
       entities.push(viewer.entities.add({
         polyline: {
-          positions: [center, groundPos],
+          positions: [bottomPos, groundPos],
           width: 2,
           material: new Cesium.PolylineDashMaterialProperty({
             color: Cesium.Color.YELLOW,
@@ -217,7 +606,7 @@ export function useFeatureVisualizer() {
       }))
 
       // 距离标注（放在线段中点）
-      const midPos = Cesium.Cartesian3.midpoint(center, groundPos, new Cesium.Cartesian3())
+      const midPos = Cesium.Cartesian3.midpoint(bottomPos, groundPos, new Cesium.Cartesian3())
       entities.push(viewer.entities.add({
         position: midPos,
         label: {

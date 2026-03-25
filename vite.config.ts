@@ -47,7 +47,6 @@ function cesiumPlugin(): Plugin {
             const ext = path.extname(filePath)
             if (mimeTypes[ext]) res.setHeader('Content-Type', mimeTypes[ext])
             res.setHeader('Access-Control-Allow-Origin', '*')
-            res.setHeader('Cache-Control', 'public, max-age=86400')
             fs.createReadStream(filePath).pipe(res)
           } else {
             next()

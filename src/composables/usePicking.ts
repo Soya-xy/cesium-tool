@@ -137,8 +137,8 @@ export function usePicking() {
         const floor = bimFloor.getFloorByTileset(picked.tileset)
         tilesetStore.featureFloorLabel = floor ? floor.label : null
 
-        // 显示包围球 + 离地测量线（基于点击位置，精确到单个构件）
-        const groundH = visualizer.show(picked, cartesian ?? undefined)
+        // 显示包围球 + 离地测量线（优先真实构件/瓦片包围球，不再用点击位置伪造）
+        const groundH = visualizer.show(picked)
         tilesetStore.featureGroundHeight = groundH
       }, 0)
 
