@@ -54,6 +54,14 @@ function copyValue(val: string) {
         <span class="prop-key">高度</span>
         <span class="prop-val">{{ positionInfo.height.toFixed(2) }}m</span>
       </div>
+      <div v-if="store.featureFloorLabel" class="prop-row highlight-row">
+        <span class="prop-key">所属楼层</span>
+        <span class="prop-val accent">{{ store.featureFloorLabel }}</span>
+      </div>
+      <div v-if="store.featureGroundHeight != null" class="prop-row highlight-row">
+        <span class="prop-key">离地高度</span>
+        <span class="prop-val accent">{{ store.featureGroundHeight.toFixed(2) }}m</span>
+      </div>
     </div>
 
     <div class="popup-divider" />
@@ -204,5 +212,16 @@ function copyValue(val: string) {
   color: var(--text-primary);
   text-align: right;
   word-break: break-all;
+}
+
+.prop-val.accent {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.highlight-row {
+  background: rgba(14, 165, 233, 0.08);
+  border-radius: 4px;
+  padding: 4px 6px;
 }
 </style>

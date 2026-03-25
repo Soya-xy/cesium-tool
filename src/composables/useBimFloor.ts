@@ -188,6 +188,12 @@ export function useBimFloor() {
     }
   }
 
+  /** 根据构件所在的 tileset 判断其所属楼层 */
+  function getFloorByTileset(tileset: Cesium.Cesium3DTileset): FloorInfo | null {
+    if (!floorMode.value) return null
+    return floors.value.find(f => f.tileset === tileset) ?? null
+  }
+
   return {
     buildings,
     floors,
@@ -200,5 +206,6 @@ export function useBimFloor() {
     flyToFloor,
     isolateFloor,
     showAllFloors,
+    getFloorByTileset,
   }
 }
